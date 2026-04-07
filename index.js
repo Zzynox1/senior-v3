@@ -1,6 +1,11 @@
 const { Client } = require('discord.js-selfbot-v13');
 const { joinVoiceChannel } = require('@discordjs/voice');
-const client = new Client({ checkUpdate: false });
+// FIXED: Added patchVoice: true and suspended user setting sync to prevent the 'all' crash
+const client = new Client({ 
+    checkUpdate: false,
+    patchVoice: true,
+    syncStatus: false 
+});
 const config = require('./config.json');
 
 client.on('ready', async () => {
@@ -9,37 +14,38 @@ client.on('ready', async () => {
 });
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
-  const oldVoice = oldState.channelId;
-  const newVoice = newState.channelId;
+  if (oldState.member.id !== client.user.id) return;
+  
+  const targetChannel = process.env.CHANNEL || config.Channel;
 
-  if (oldVoice !== newVoice) {
-    if (!newVoice) {
-      // Re-join if kicked or disconnected
-      if (oldState.member.id !== client.user.id) return;
+  if (newState.channelId !== targetChannel) {
+      console.log("Not in target channel, re-joining...");
       await joinVC(client, config);
-    } else {
-      // Ensure we stay in the target channel
-      if (oldState.member.id !== client.user.id) return;
-      if (newVoice !== config.Channel) {
-         await joinVC(client, config);
-      }
-    }
   }
 });
 
-// This line checks Railway's "Variables" first, then the config file
 client.login(process.env.TOKEN || config.Token);
 
 async function joinVC(client, config) {
-  const guildId = config.Guild;
+  const guildId = process.env.GUILD || config.Guild;
+  const channelId = process.env.CHANNEL || config.Channel;
+
   const guild = client.guilds.cache.get(guildId);
-  const voiceChannel = guild.channels.cache.get(config.Channel || process.env.CHANNEL);
-  
-  const connection = joinVoiceChannel({
-    channelId: voiceChannel.id,
-    guildId: guild.id,
-    adapterCreator: guild.voiceAdapterCreator,
-    selfDeaf: false,
-    selfMute: true
-  });
+  if (!guild) return console.log("Guild not found!");
+
+  const voiceChannel = guild.channels.cache.get(channelId);
+  if (!voiceChannel) return console.log("Voice Channel not found!");
+
+  try {
+    joinVoiceChannel({
+      channelId: voiceChannel.id,
+      guildId: guild.id,
+      adapterCreator: guild.voiceAdapterCreator,
+      selfDeaf: false,
+      selfMute: true
+    });
+    console.log(`Successfully joined ${voiceChannel.name}`);
+  } catch (err) {
+    console.error("Error joining VC:", err);
+  }
 }
